@@ -1,0 +1,98 @@
+# secrets:
+#   postgres_super_pass:
+#     external: true
+#   postgres_rep_pass:
+#     external: true
+#   patroni_admin_pass:
+#     external: true
+
+networks:
+  db-cluster-network:
+    # driver: overlay
+    external: true
+
+services:
+  patroni1: &patroni
+    image: saat-patroni-postgres:17-alpine
+    restart: always
+    ports:
+      - "5432:5432"
+      - "8008:8008"
+    hostname: patroni1
+    networks: [db-cluster-network]
+    volumes:
+      #- /var/opt/WorkFlow/data/:/var/lib/postgresql/data
+      - patroni1-data:/data
+    environment: &patroni-env
+      POSTGRES_USER: archive
+      POSTGRES_PASSWORD: archive123pass
+      POSTGRES_DB: mydb
+      POSTGRES_REPLICATION_USERNAME: replicator
+      POSTGRES_REPLICATION_PASSWORD: replication123pass
+      PATRONI_SCOPE: archive-db-cluster
+      PATRONI_NAMESPACE: /db/
+      PATRONI_ETCD3_HOSTS: etcd1:2379,etcd2:2379,etcd3:2379
+      PATRONI_POSTGRESQL_AUTHENTICATION_SUPERUSER_USERNAME: postgres
+      PATRONI_POSTGRESQL_AUTHENTICATION_SUPERUSER_PASSWORD: postgres123pass
+      PATRONI_POSTGRESQL_AUTHENTICATION_REPLICATION_USERNAME: replicator
+      PATRONI_POSTGRESQL_AUTHENTICATION_REPLICATION_PASSWORD: replication123pass
+      PATRONI_POSTGRESQL_AUTHENTICATION_REWIND_USERNAME: rewind_user
+      PATRONI_POSTGRESQL_AUTHENTICATION_rewind123pass: rewind123password
+      # PATRONI_BOOTSTRAP_USERS_admin_PASSWORD: admin
+      # PATRONI_BOOTSTRAP_USERS_admin_OPTIONS: '["superuser", "createdb"]'
+      BOOTSTRAP_NODE: "true"
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints:
+          - node.hostname == RA11
+    # secrets:
+    #   - postgres_super_pass
+    #   - postgres_rep_pass
+    #   - patroni_admin_pass
+
+  patroni2:
+    <<: *patroni
+    hostname: patroni2
+    ports:
+      - "5433:5432"
+      - "8009:8008"
+    depends_on:
+      - patroni1
+    environment:
+      <<: *patroni-env
+      BOOTSTRAP_NODE: false
+    volumes:
+      - patroni2-data:/data
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints:
+          - node.hostname == RA2
+
+  patroni3:
+    <<: *patroni
+    hostname: patroni3
+    ports:
+      - "5434:5432"
+      - "8010:8008"
+    depends_on:
+      - patroni1
+    environment:
+      <<: *patroni-env
+      BOOTSTRAP_NODE: false
+    volumes:
+      - patroni3-data:/data
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints:
+          - node.hostname == RA3
+
+volumes:
+  patroni1-data:
+  patroni2-data:
+  patroni3-data:
